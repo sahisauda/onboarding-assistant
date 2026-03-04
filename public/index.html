@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ranosys AI Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body class="dark-theme">
+
+    <!-- Login Overlay -->
+    <div id="login-overlay" class="login-overlay glass-panel">
+        <div class="login-box">
+            <img src="https://www.ranosys.com/wp-content/uploads/2024/05/logo_new.png" alt="Ranosys Logo"
+                style="height: 45px; margin-bottom: 20px;">
+            <h2>Empowering Tomorrow</h2>
+            <p>Connect your Google account to unlock Ranosys AI insights from your Drive & Gmail.</p>
+            <a href="/auth/google" class="google-login-btn">
+                <i class="fab fa-google"></i> Sign in with Ranosys Auth
+            </a>
+        </div>
+    </div>
+
+    <div class="app-container" id="app-content" style="display: none;">
+        <!-- Sidebar: Checklist -->
+        <aside class="sidebar glass-panel">
+            <div class="sidebar-header">
+                <img src="https://www.ranosys.com/wp-content/uploads/2024/05/logo_new.png" alt="Ranosys"
+                    style="height: 30px; margin-bottom: 20px;">
+                <div class="user-profile" id="user-profile">
+                    <!-- Loaded via JS -->
+                </div>
+
+                <div class="settings-toggle" onclick="toggleSettings()"
+                    style="cursor:pointer; margin-top:20px; color:var(--text-secondary); font-size: 0.85rem; display:flex; align-items:center; gap:8px;">
+                    <i class="fas fa-sliders-h"></i> <span>Context Settings</span>
+                </div>
+
+                <div id="advanced-settings"
+                    style="display: none; margin-top: 15px; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px solid var(--border-color);">
+                    <div class="role-selector">
+                        <label for="role">Perspective:</label>
+                        <select id="role">
+                            <option value="Employee">Standard Employee</option>
+                            <option value="Software Engineer">Software Engineer</option>
+                            <option value="Marketing Manager">Marketing Manager</option>
+                            <option value="General">Custom</option>
+                        </select>
+                    </div>
+                    <div class="role-selector mt-1" id="folder-selection-container" style="margin-top: 10px;">
+                        <label for="folder-select">Drive Folder:</label>
+                        <select id="folder-select">
+                            <!-- Loaded via JS -->
+                        </select>
+                    </div>
+                </div>
+
+
+            </div>
+            <div class="sidebar-footer">
+                <button id="logout-btn" class="secondary-btn"><i class="fas fa-sign-out-alt"></i> Logout</button>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-main glass-panel">
+            <header class="chat-header">
+                <div class="agent-info">
+                    <div class="avatar ai-avatar"><i class="fas fa-robot"></i></div>
+                    <div>
+                        <h1>Ranosys AI - Nova</h1>
+                        <p class="status">Directly Integrated with Google Workspace • <span
+                                class="online-indicator"></span> Active
+                        </p>
+                    </div>
+                </div>
+            </header>
+
+            <div class="chat-messages" id="chat-messages">
+                <div class="message ai-message">
+                    <div class="avatar"><i class="fas fa-robot"></i></div>
+                    <div class="bubble">
+                        Hello! I am connected to your Google Workspace. I can answer questions based on the documents in
+                        your designated Drive folder. What would you like to know?
+                    </div>
+                </div>
+            </div>
+
+            <!-- Smart Suggestions -->
+            <div class="suggestions" id="suggestions">
+                <button class="suggestion-btn" onclick="sendSuggestion('Summarize my recent documents.')">Summarize
+                    recent documents</button>
+                <button class="suggestion-btn" onclick="sendSuggestion('What is the vacation policy?')">Vacation
+                    policy?</button>
+            </div>
+
+            <div class="chat-input-container">
+                <form id="chat-form">
+                    <input type="text" id="message-input" placeholder="Ask about your documents..." autocomplete="off"
+                        required>
+                    <button type="button" id="mic-btn" class="mic-btn"><i class="fas fa-microphone"></i></button>
+                    <button type="submit" id="send-btn"><i class="fas fa-paper-plane"></i></button>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+
+</html>
