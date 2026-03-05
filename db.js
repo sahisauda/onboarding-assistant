@@ -1,14 +1,21 @@
 const fs = require('fs');
 const path = require('path');
 
-const DB_PATH = path.join(__dirname, 'users.json');
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'users.json');
 
 // Initial default admin (user can change this in .env or via first login)
 const MASTER_ADMIN_EMAIL = process.env.ADMIN_EMAIL || '';
 
 function loadDB() {
     if (!fs.existsSync(DB_PATH)) {
-        fs.writeFileSync(DB_PATH, JSON.stringify({ users: {} }, null, 2));
+        // If we're on Render and the disk is empty, check if we have a local template
+        const templatePath = path.join(__dirname, 'users.json');
+        if (DB_PATH !== templatePath && fs.existsSync(templatePath)) {
+            console.log(`Initializing persistent DB from template: ${templatePath} -> ${DB_PATH}`);
+            fs.copyFileSync(templatePath, DB_PATH);
+        } else {
+            fs.writeFileSync(DB_PATH, JSON.stringify({ users: {} }, null, 2));
+        }
     }
     return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
 }

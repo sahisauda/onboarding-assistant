@@ -210,15 +210,30 @@ app.post('/api/chat', requireAuth, async (req, res) => {
         const userEmail = req.session.user.email;
         const userRole = req.session.user.role;
         const allowedFolderIds = req.session.user.allowedFolders || [];
-        const folderId = requestedFolderId || process.env.GOOGLE_DRIVE_FOLDER_ID;
+
+        // Determine which folder to use
+        let folderId = requestedFolderId;
+
+        if (!folderId) {
+            if (userRole === 'admin') {
+                folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+            } else if (allowedFolderIds.length > 0) {
+                folderId = allowedFolderIds[0]; // Default to user's first assigned folder
+            } else {
+                return res.status(400).json({ reply: '❌ No folders assigned to your account. Please contact an admin.' });
+            }
+        }
+
+        console.log(`Chat request from ${userEmail} for folder ${folderId}`);
 
         // RBAC Check for Chat Request
         if (userRole !== 'admin' && !allowedFolderIds.includes(folderId)) {
+            console.warn(`Unauthorized access attempt by ${userEmail} to folder ${folderId}`);
             return res.status(403).json({ reply: '❌ Access Denied: You do not have permission to query this folder. Please contact an admin.' });
         }
 
         if (!folderId) {
-            return res.status(500).json({ reply: 'Server Configuration Error: Google Drive Folder ID is absent.' });
+            return res.status(500).json({ reply: 'Server Configuration Error: Google Drive Folder ID is missing.' });
         }
 
         // Get or build the user's vector store from their Drive folder

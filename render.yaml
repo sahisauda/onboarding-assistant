@@ -9,6 +9,8 @@ services:
         value: 18.0.0
       - key: SESSION_SECRET
         generateValue: true
+      - key: DB_PATH
+        value: /data/users.json
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
@@ -27,3 +29,7 @@ services:
         sync: false
       - key: ADMIN_EMAIL
         sync: false
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1

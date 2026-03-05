@@ -123,20 +123,22 @@ async function getOrBuildVectorStore(userEmail, authClient, folderId) {
     try {
         // 1. Fetch files recursively
         const files = await getAllFiles(drive, folderId);
+        console.log(`Retrieved ${files.length} file entries from folder tree [${folderId}]`);
 
         if (!files || files.length === 0) {
-            console.log('No files found in folder tree.');
+            console.log(`ALERT: No files found for user ${userEmail} in folder ${folderId}. This might be due to empty folder or lack of permissions to list children.`);
             const embeddings = new OpenAIEmbeddings({
                 openAIApiKey: process.env.OPENAI_API_KEY,
                 configuration: { baseURL: process.env.OPENAI_BASE_URL }
             });
             const store = new SimpleVectorStore(embeddings);
-            await store.addDocuments([new Document({ pageContent: "No documents exist in this selected folder." })]);
+            await store.addDocuments([new Document({ pageContent: "No documents exist in this selected folder. Please ensure the folder is not empty and you have shared it with the assistant account if necessary." })]);
             VECTOR_STORES[cacheKey] = store;
             return store;
         }
 
         const documents = [];
+        console.log(`Processing up to 10 files from ${userEmail}'s folder...`);
 
         // 2. Download and parse files in parallel (Max 5 at a time to avoid rate limits)
         const processFile = async (file) => {
