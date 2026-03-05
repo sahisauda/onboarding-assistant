@@ -5,6 +5,19 @@ const { Document } = require("@langchain/core/documents");
 const path = require('path');
 const pdfParse = require('pdf-parse');
 
+// Build a Drive client using the Service Account credentials from the environment.
+// This means users don't need to grant "See and download all your Google Drive files" permission.
+function getServiceAccountDriveClient() {
+    const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+    if (!keyJson) throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY is not set in .env');
+    const key = JSON.parse(keyJson);
+    const auth = new google.auth.GoogleAuth({
+        credentials: key,
+        scopes: ['https://www.googleapis.com/auth/drive.readonly'],
+    });
+    return google.drive({ version: 'v3', auth });
+}
+
 // Fallback Simple Vector Store since Langchain memory store export is broken in this package combination
 // Now includes Keyword search fallback for providers that don't support embeddings (like Groq)
 class SimpleVectorStore {
@@ -92,7 +105,7 @@ class SimpleVectorStore {
 const VECTOR_STORES = {}; // In-memory store per user email and folder combination
 
 // Helper to recursively fetch all relevant files from a folder and its subfolders
-async function getAllFiles(drive, folderId) {
+async function getAllFiles(drive, folderId) {  // drive is already a service account client
     let allFiles = [];
     const res = await drive.files.list({
         q: `'${folderId}' in parents and trashed = false`,
@@ -111,14 +124,15 @@ async function getAllFiles(drive, folderId) {
     return allFiles;
 }
 
-async function getOrBuildVectorStore(userEmail, authClient, folderId) {
+// Note: authClient parameter removed — Drive access now uses service account internally.
+async function getOrBuildVectorStore(userEmail, folderId) {
     const cacheKey = `${userEmail}:${folderId}`;
     if (VECTOR_STORES[cacheKey]) {
         return VECTOR_STORES[cacheKey];
     }
 
     console.log(`Building vector store for user ${userEmail} and folder ${folderId}...`);
-    const drive = google.drive({ version: 'v3', auth: authClient });
+    const drive = getServiceAccountDriveClient();
 
     try {
         // 1. Fetch files recursively

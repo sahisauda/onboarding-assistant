@@ -26,13 +26,33 @@ const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_REDIRECT_URI
 );
 
-// Scopes for Drive and Gmail
+// Scopes for Gmail and user identity ONLY.
+// Drive access is handled by a Service Account (see GOOGLE_SERVICE_ACCOUNT_KEY in .env)
+// This removes the scary "See and download all your Google Drive files" message from the consent screen.
 const SCOPES = [
-    'https://www.googleapis.com/auth/drive.readonly',
     'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/userinfo.profile',
     'https://www.googleapis.com/auth/userinfo.email'
 ];
+
+// Helper: Get a Drive client using the Service Account (bypasses user OAuth for Drive)
+function getServiceAccountDriveClient() {
+    const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+    if (!keyJson) {
+        throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY is not set in .env. Please add your service account JSON.');
+    }
+    let key;
+    try {
+        key = JSON.parse(keyJson);
+    } catch (e) {
+        throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY is not valid JSON. Please check your .env file.');
+    }
+    const auth = new google.auth.GoogleAuth({
+        credentials: key,
+        scopes: ['https://www.googleapis.com/auth/drive.readonly'],
+    });
+    return google.drive({ version: 'v3', auth });
+}
 
 // Middleware
 app.use(cors());
@@ -119,21 +139,15 @@ function requireAdmin(req, res, next) {
     next();
 }
 
-// Helper to get authorized Drive client
-function getDriveClient(tokens) {
-    const auth = new google.auth.OAuth2(
-        process.env.GOOGLE_CLIENT_ID,
-        process.env.GOOGLE_CLIENT_SECRET,
-        process.env.GOOGLE_REDIRECT_URI
-    );
-    auth.setCredentials(tokens);
-    return google.drive({ version: 'v3', auth });
+// Helper to get authorized Drive client (now uses service account — no user Drive permission needed)
+function getDriveClient() {
+    return getServiceAccountDriveClient();
 }
 
 // Endpoint to list subfolders of the primary Drive folder
 // Endpoint to list folders
 app.get('/api/folders', requireAuth, async (req, res) => {
-    const drive = getDriveClient(req.session.tokens);
+    const drive = getDriveClient();
     const parentFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
     const userRole = req.session.user.role;
     const allowedFolderIds = req.session.user.allowedFolders || [];
@@ -174,7 +188,7 @@ app.get('/api/admin/folder-name', requireAuth, requireAdmin, async (req, res) =>
     const { id } = req.query;
     if (!id) return res.status(400).json({ error: "ID required" });
     try {
-        const drive = getDriveClient(req.session.tokens);
+        const drive = getDriveClient();
         const folder = await drive.files.get({ fileId: id, fields: 'name' });
         res.json({ name: folder.data.name });
     } catch (e) {
@@ -199,12 +213,13 @@ const llm = new ChatOpenAI({
 app.post('/api/chat', requireAuth, async (req, res) => {
     const { message, role, folderId: requestedFolderId } = req.body;
 
-    const auth = new google.auth.OAuth2(
+    // OAuth client is still needed for Gmail (sending emails)
+    const userOAuthClient = new google.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,
         process.env.GOOGLE_CLIENT_SECRET,
         process.env.GOOGLE_REDIRECT_URI
     );
-    auth.setCredentials(req.session.tokens);
+    userOAuthClient.setCredentials(req.session.tokens);
 
     try {
         const userEmail = req.session.user.email;
@@ -257,8 +272,8 @@ app.post('/api/chat', requireAuth, async (req, res) => {
         const searchTerms = cleanQueryResponse.content.trim();
         console.log(`AI Rewrote query: "${message}" -> "${searchTerms}"`);
 
-        // Get or build the user's vector store from their Drive folder
-        const vectorStore = await getOrBuildVectorStore(userEmail, auth, folderId);
+        // Get or build the user's vector store from their Drive folder (uses service account)
+        const vectorStore = await getOrBuildVectorStore(userEmail, folderId);
         const docs = await vectorStore.similaritySearch(searchTerms, 5);
         const contextText = docs.map(d => d.pageContent).join("\n\n---\n\n") || "No document context found.";
         const promptInfo = PromptTemplate.fromTemplate(`
@@ -359,7 +374,7 @@ Answer:`);
 
                 try {
                     console.log(`Attempting automated email dispatch to: ${toEmail}`);
-                    await sendEmail(auth, toEmail, subject, body);
+                    await sendEmail(userOAuthClient, toEmail, subject, body);
                     res.write(`data: ${JSON.stringify({ emailSent: true, to: toEmail })}\n\n`);
                 } catch (e) {
                     console.error("Email API Failure:", e.message);
