@@ -15,6 +15,11 @@
     --blur-amt: 20px;
 }
 
+.logo-white {
+    filter: brightness(0) invert(1);
+    transition: opacity 0.3s ease;
+}
+
 .role-badge {
     display: inline-block;
     padding: 2px 8px;
