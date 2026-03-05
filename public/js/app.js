@@ -76,20 +76,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const role = roleSelector.value;
             const folderId = folderSelect.value;
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message, role, folderId })
+                body: JSON.stringify({ message, role, folderId }),
+                signal: controller.signal
             });
+            clearTimeout(timeoutId);
 
             if (response.status === 401) {
                 window.location.reload();
                 return;
             }
 
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                bubble.innerHTML = `<span style="color:var(--error-color)">${errData.reply || errData.error || 'Server error. Please try again.'}</span>`;
+                return;
+            }
+
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let fullText = "";
+            let chunkCount = 0;
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -102,11 +114,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (line.startsWith('data: ')) {
                         try {
                             const data = JSON.parse(line.slice(6));
+                            chunkCount++;
 
                             if (data.chunk) {
-                                if (fullText === "") bubble.innerHTML = ""; // Clear typing indicator on first chunk
+                                if (fullText === "") bubble.innerHTML = ""; // Clear typing indicator
                                 fullText += data.chunk;
-                                // Simple markdown-ish bolding for real-time
                                 bubble.innerText = fullText;
                                 scrollToBottom();
                             }
@@ -116,7 +128,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                             }
 
                             if (data.done) {
-                                // Final render with proper formatting if needed
                                 bubble.innerHTML = fullText.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
                                 if (data.suggestions && data.suggestions.length > 0) {
                                     suggestionsDiv.innerHTML = data.suggestions.map(s =>
@@ -129,13 +140,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                             if (data.error) {
                                 bubble.innerHTML = `<span style="color:var(--error-color)">${data.error}</span>`;
                             }
-                        } catch (e) { /* partial JSON */ }
+                        } catch (e) { }
                     }
                 }
             }
+
+            if (chunkCount === 0 && fullText === "") {
+                bubble.innerHTML = `<span style="color:var(--error-color)">Thinking timed out or no data received. This usually happens if the folder is too large. Please retry with a smaller folder.</span>`;
+            }
+
         } catch (error) {
             console.error('Chat error:', error);
-            bubble.innerHTML = 'Error connecting to the server.';
+            if (error.name === 'AbortError') {
+                bubble.innerHTML = '<span style="color:var(--error-color)">Request timed out. Google Drive is taking too long to respond.</span>';
+            } else {
+                bubble.innerHTML = '<span style="color:var(--error-color)">Could not connect to the server. Please check your internet.</span>';
+            }
         }
     });
 

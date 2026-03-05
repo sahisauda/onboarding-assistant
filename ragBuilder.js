@@ -173,7 +173,21 @@ async function getOrBuildVectorStore(userEmail, authClient, folderId) {
             return null;
         };
 
-        const docPromises = files.slice(0, 10).map(file => processFile(file)); // Limit to first 10 files for initial speed
+        // 2. Download and parse files in parallel (Max 10 at a time)
+        const processFileWithTimeout = async (file) => {
+            const timeout = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('File processing timeout')), 15000)
+            );
+            try {
+                console.log(`- Start processing: ${file.name} (${file.mimeType})`);
+                return await Promise.race([processFile(file), timeout]);
+            } catch (err) {
+                console.error(`- Error/Timeout processing ${file.name}:`, err.message);
+                return null;
+            }
+        };
+
+        const docPromises = files.slice(0, 10).map(file => processFileWithTimeout(file));
         const results = await Promise.all(docPromises);
         results.forEach(d => { if (d) documents.push(d); });
 
