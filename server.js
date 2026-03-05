@@ -241,7 +241,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
         const queryCleaner = new ChatOpenAI({
             openAIApiKey: process.env.OPENAI_API_KEY,
             temperature: 0,
-            modelName: 'gpt-4o-mini',
+            modelName: process.env.GROQ_MODEL_NAME || 'gpt-4o-mini',
             configuration: { baseURL: process.env.OPENAI_BASE_URL }
         });
 
