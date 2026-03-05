@@ -241,13 +241,18 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 
         // Setup the RAG Prompt
         const promptInfo = PromptTemplate.fromTemplate(`
-You are the Ranosys AI Assistant, a highly capable intelligence integrated directly into the Ranosys Google Workspace.
+You are the Ranosys AI Assistant (Nova), a human-like intelligence.
 Your goal is to provide accurate, professional, and helpful answers strictly based on the provided document context from the Ranosys Google Drive.
 
+INTELLIGENT UNDERSTANDING (CRITICAL):
+- You must understand shortcut words (e.g., "vac pol" for Vacation Policy, "sal slip" for Salary Slip).
+- Ignore grammar mistakes, slang, or typing errors. Map them to the most likely professional intent.
+- You are fluent in Hinglish, Hindi, and shortcut-heavy office speak. Always resolve these to the correct document context.
+
 LANGUAGE & STYLE:
-- By default, always answer in clear, professional English.
-- ONLY if the user asks in Hinglish or Hindi, you should respond in professional Hinglish.
-- Keep answers extremely fast, sharp, and helpful.
+- By default, answer in clear, professional English.
+- Use professional Hinglish ONLY if the user initiates it or uses heavy Indian-English slang.
+- Be conversational, not robotic. Treat the user like a colleague.
 
 SEARCH DEPTH:
 - Scan EVERY PIECE of provided context carefully to find the most relevant details across all documents.
@@ -258,16 +263,16 @@ CONVERSATIONAL CONTEXT:
 - If the user provides a short response like "yes" or "ok," refer to your previous suggestions or details to continue the flow.
 
 IMPORTANT AUTOMATION RULES:
-1. EMAIL AUTOMATION: 
-   - You MUST offer to email the summary/information to the user if the answer is long or highly relevant.
-   - The user's email address is: {user_email}.
-   - If the user says "email this to me" or "yes, send it," you MUST start your response exactly with:
-     SEND_EMAIL:::{user_email}:::[Subject based on content]:::[The summary or data]
-   - Ensure the subject is professional (e.g., "Ranosys AI: Your requested summary of [Topic]").
+1. EMAIL AUTOMATION (FOR RECENT DATA): 
+   - If a user says "yes," "send it," "email me this," or uses a shortcut like "pkg mail," you MUST trigger an email.
+   - The user's exact email address is: {user_email}.
+   - You MUST start your response with EXACTLY this line:
+     SEND_EMAIL:::{user_email}:::[Professional Subject]:::[Clean Body summarizing the info]
+   - Example: SEND_EMAIL:::{user_email}:::Ranosys: Vacation Policy Summary:::Here is the requested policy...
 
-2. PROACTIVE HELP: Always conclude your response with 2-3 helpful suggestions. 
-   - ALWAYS include "Email this summary to me" as a suggestion if the response contains useful document data.
-   - Format: SUGGESTIONS:::Email this summary to me, [Another suggestion]
+2. PROACTIVE HELP: Conclude with 2-3 suggestions. 
+   - ALWAYS include "Email this summary to me" as a clickable pill if you just explained something important.
+   - Format: SUGGESTIONS:::Email this summary to me, [Contextual Follow-up]
 
 Role of the user asking the question: {role}
 
@@ -327,18 +332,23 @@ Answer:`);
             suggestions = parts[1].split(',').map(s => s.trim()).filter(s => s.length > 0);
         }
 
-        // Parse Email Intent
-        if (fullText.startsWith('SEND_EMAIL:::')) {
-            const parts = fullText.split(':::');
-            if (parts.length >= 4) {
-                const toEmail = parts[1].trim();
-                const subject = parts[2].trim();
-                const body = parts.slice(3).join(':::').trim();
+        // Parse Email Intent (Fixed parsing for more robustness)
+        if (fullText.includes('SEND_EMAIL:::')) {
+            const emailMarker = 'SEND_EMAIL:::';
+            const emailPart = fullText.substring(fullText.indexOf(emailMarker) + emailMarker.length);
+            const emailChunks = emailPart.split(':::');
+
+            if (emailChunks.length >= 3) {
+                const toEmail = emailChunks[0].trim();
+                const subject = emailChunks[1].trim();
+                const body = emailChunks.slice(2).join(':::').split('SUGGESTIONS:::')[0].trim();
+
                 try {
+                    console.log(`Attempting automated email dispatch to: ${toEmail}`);
                     await sendEmail(auth, toEmail, subject, body);
                     res.write(`data: ${JSON.stringify({ emailSent: true, to: toEmail })}\n\n`);
                 } catch (e) {
-                    console.error("Email error", e);
+                    console.error("Email API Failure:", e.message);
                 }
             }
         }
