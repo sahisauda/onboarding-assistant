@@ -236,10 +236,31 @@ app.post('/api/chat', requireAuth, async (req, res) => {
             return res.status(500).json({ reply: 'Server Configuration Error: Google Drive Folder ID is missing.' });
         }
 
+        // AI Step 1: Clean/Expand Query (Understanding shortcuts, slangs, Hinglish)
+        // This ensures "vac pol" becomes "Vacation Policy" before we search the Drive.
+        const queryCleaner = new ChatOpenAI({
+            openAIApiKey: process.env.OPENAI_API_KEY,
+            temperature: 0,
+            modelName: 'gpt-4o-mini',
+            configuration: { baseURL: process.env.OPENAI_BASE_URL }
+        });
+
+        const cleanQueryResponse = await queryCleaner.invoke(`
+            You are a linguistic expert. Rewrite the following user query into a clean, professional search query for a document database.
+            - Expand shortcuts (e.g., "vac pol" -> "vacation policy", "HR form" -> "human resources form").
+            - Correct grammar/slang.
+            - Convert Hinglish into professional English for better document matching.
+            - Output ONLY the cleaned query string.
+            
+            User Query: "${message}"
+        `);
+        const searchTerms = cleanQueryResponse.content.trim();
+        console.log(`AI Rewrote query: "${message}" -> "${searchTerms}"`);
+
         // Get or build the user's vector store from their Drive folder
         const vectorStore = await getOrBuildVectorStore(userEmail, auth, folderId);
-
-        // Setup the RAG Prompt
+        const docs = await vectorStore.similaritySearch(searchTerms, 5);
+        const contextText = docs.map(d => d.pageContent).join("\n\n---\n\n") || "No document context found.";
         const promptInfo = PromptTemplate.fromTemplate(`
 You are the Ranosys AI Assistant (Nova), a human-like intelligence.
 Your goal is to provide accurate, professional, and helpful answers strictly based on the provided document context from the Ranosys Google Drive.
@@ -291,23 +312,16 @@ Answer:`);
         const historyStr = req.session.chatHistory.map(h => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`).join("\n");
 
 
-        // Create the sequence to get context FIRST (this is the RAG part)
-        const contextProvider = async (inputParams) => {
-            const isGroq = process.env.OPENAI_BASE_URL && process.env.OPENAI_BASE_URL.includes('groq');
-            if (isGroq) vectorStore.supportsEmbeddings = false;
+        // (Context building now handled above)
 
-            const docs = await vectorStore.similaritySearch(inputParams.input, 5);
-            return docs.map(d => d.pageContent).join("\n\n---\n\n") || "No document context found.";
-        };
-
-        const context = await contextProvider({ input: message });
         const finalPrompt = await promptInfo.format({
-            context,
+            context: contextText,
             chat_history: historyStr || "No previous history.",
             user_email: userEmail,
             input: message,
             role: role || 'Employee'
         });
+
 
 
 

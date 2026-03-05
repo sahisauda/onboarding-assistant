@@ -101,6 +101,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let fullText = "";
+            let emailBadgeHtml = "";
             let chunkCount = 0;
 
             while (true) {
@@ -119,16 +120,26 @@ document.addEventListener('DOMContentLoaded', async () => {
                             if (data.chunk) {
                                 if (fullText === "") bubble.innerHTML = ""; // Clear typing indicator
                                 fullText += data.chunk;
-                                bubble.innerText = fullText;
+
+                                // Clean display text: Remove automation markers from visible stream
+                                let displayText = fullText.split('SEND_EMAIL:::')[0].split('SUGGESTIONS:::')[0].trim();
+                                bubble.innerText = displayText;
                                 scrollToBottom();
                             }
 
                             if (data.emailSent) {
-                                bubble.innerHTML += `<div style="margin-top:10px; color:var(--success-color); font-weight:600;"><i class="fas fa-check-circle"></i> Email sent to ${data.to}</div>`;
+                                emailBadgeHtml = `<div class="email-badge glass-panel" style="margin-top:10px; color:#28a745; font-size: 0.8rem; display:flex; align-items:center; gap:8px;"><i class="fas fa-check-circle"></i> Summary sent to ${data.to}</div>`;
+                                // Show immediately
+                                bubble.innerHTML += emailBadgeHtml;
                             }
 
                             if (data.done) {
-                                bubble.innerHTML = fullText.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                                let finalCleanText = fullText.split('SEND_EMAIL:::')[0].split('SUGGESTIONS:::')[0].trim();
+                                bubble.innerHTML = finalCleanText.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+                                // Re-append badge if it was sent
+                                if (emailBadgeHtml) bubble.innerHTML += emailBadgeHtml;
+
                                 if (data.suggestions && data.suggestions.length > 0) {
                                     suggestionsDiv.innerHTML = data.suggestions.map(s =>
                                         `<button class="suggestion-btn" onclick="sendSuggestion('${s.replace(/'/g, "\\'")}')">${s}</button>`
