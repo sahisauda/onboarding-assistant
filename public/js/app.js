@@ -13,6 +13,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     const micBtn = document.getElementById('mic-btn');
 
     // 1. Check Authentication Status
+    // Show any URL error params (e.g., unauthorized domain) on the login screen
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlError = urlParams.get('error');
+    const loginErrorEl = document.getElementById('login-error-msg');
+    if (urlError && loginErrorEl) {
+        if (urlError === 'unauthorized_domain') {
+            loginErrorEl.textContent = '⛔ Access restricted to Ranosys employees only. Please log in with your @ranosys.com Google account.';
+        } else if (urlError === 'auth_failed') {
+            loginErrorEl.textContent = '⚠️ Google login failed. Please try again.';
+        }
+        loginErrorEl.style.display = 'block';
+        // Clean the URL without reloading
+        window.history.replaceState({}, '', '/');
+    }
+
     try {
         const authRes = await fetch('/api/auth/status');
         const authData = await authRes.json();

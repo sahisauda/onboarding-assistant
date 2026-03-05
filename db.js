@@ -3,12 +3,18 @@ const path = require('path');
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'users.json');
 
-// Initial default admin (user can change this in .env or via first login)
+// Domain that is allowed to access the chatbot without any manual permission setup.
+// Every @ranosys.com Google login is automatically granted access to the default Drive folder.
+const ALLOWED_DOMAIN = process.env.ALLOWED_DOMAIN || 'ranosys.com';
 const MASTER_ADMIN_EMAIL = process.env.ADMIN_EMAIL || '';
+
+// Returns true if the email belongs to the allowed company domain
+function isAllowedDomain(email) {
+    return email && email.toLowerCase().endsWith(`@${ALLOWED_DOMAIN}`);
+}
 
 function loadDB() {
     if (!fs.existsSync(DB_PATH)) {
-        // If we're on Render and the disk is empty, check if we have a local template
         const templatePath = path.join(__dirname, 'users.json');
         if (DB_PATH !== templatePath && fs.existsSync(templatePath)) {
             console.log(`Initializing persistent DB from template: ${templatePath} -> ${DB_PATH}`);
@@ -29,16 +35,31 @@ function getUser(email) {
     const isFirstUser = Object.keys(db.users).length === 0;
     const isExplicitAdmin = MASTER_ADMIN_EMAIL && email === MASTER_ADMIN_EMAIL;
 
+    // Default folder: assigned automatically to every new Ranosys employee
+    const defaultFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+
     if (!db.users[email]) {
+        // Auto-register: any ranosys.com employee gets access on first login
+        const defaultFolders = (defaultFolderId && isAllowedDomain(email))
+            ? [defaultFolderId]
+            : [];
+
         db.users[email] = {
             email: email,
             role: (isFirstUser || isExplicitAdmin) ? 'admin' : 'employee',
-            allowedFolders: [],
-            lastLogin: new Date().toISOString()
+            allowedFolders: defaultFolders,
+            lastLogin: new Date().toISOString(),
+            autoProvisioned: true
         };
+        console.log(`Auto-provisioned new user: ${email} with folders: ${JSON.stringify(defaultFolders)}`);
         saveDB(db);
     } else {
-        // Update last login
+        // Existing user: ensure the default folder is present (in case it was added later)
+        if (defaultFolderId && isAllowedDomain(email)) {
+            if (!db.users[email].allowedFolders.includes(defaultFolderId)) {
+                db.users[email].allowedFolders.push(defaultFolderId);
+            }
+        }
         db.users[email].lastLogin = new Date().toISOString();
         saveDB(db);
     }
@@ -88,4 +109,4 @@ function bulkAssign(emails, folderId) {
     saveDB(db);
 }
 
-module.exports = { getUser, getAllUsers, updateUser, bulkAssign };
+module.exports = { getUser, getAllUsers, updateUser, bulkAssign, isAllowedDomain };
