@@ -253,11 +253,9 @@ SEARCH DEPTH:
 - Scan EVERY PIECE of provided context carefully to find the most relevant details across all documents.
 - If multiple documents mention the topic, synthesize a complete answer.
 
-Role of the user asking the question: {role}
-
-Use the following pieces of retrieved context to answer the question.
-If the answer is not in the context, clearly say so and do not invent an answer.
-Keep your answers professional and clear.
+CONVERSATIONAL CONTEXT:
+- You have access to the previous chat history below. Use it to understand the user's intent if they ask follow-up questions (e.g., "tell me more," "why?", "go ahead").
+- If the user provides a short response like "yes" or "ok," refer to your previous suggestions or details to continue the flow.
 
 IMPORTANT AUTOMATION RULES:
 1. If the user asks you to send an email, verify you have the recipient email address, subject, and body.
@@ -269,11 +267,21 @@ IMPORTANT AUTOMATION RULES:
    Format these at the VERY END of your response on a new line starting with "SUGGESTIONS:::".
    Example: SUGGESTIONS:::Would you like me to email this policy?, Tell me more about Ranosys, How do I apply?
 
-Context: 
+Role of the user asking the question: {role}
+
+Retrieved Document Context: 
 {context}
 
-Question: {input}
+Previous Research/Chat History:
+{chat_history}
+
+Current Question: {input}
 Answer:`);
+
+        // Manage Chat History (Saves last 10 interactions)
+        if (!req.session.chatHistory) req.session.chatHistory = [];
+        const historyStr = req.session.chatHistory.map(h => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`).join("\n");
+
 
         // Create the sequence to get context FIRST (this is the RAG part)
         const contextProvider = async (inputParams) => {
@@ -287,9 +295,11 @@ Answer:`);
         const context = await contextProvider({ input: message });
         const finalPrompt = await promptInfo.format({
             context,
+            chat_history: historyStr || "No previous history.",
             input: message,
             role: role || 'Employee'
         });
+
 
         // Set headers for streaming
         res.setHeader('Content-Type', 'text/event-stream');
@@ -329,7 +339,14 @@ Answer:`);
         }
 
         res.write(`data: ${JSON.stringify({ done: true, suggestions })}\n\n`);
+
+        // Save to History
+        req.session.chatHistory.push({ role: 'user', content: message });
+        req.session.chatHistory.push({ role: 'assistant', content: fullText });
+        if (req.session.chatHistory.length > 20) req.session.chatHistory = req.session.chatHistory.slice(-20);
+
         res.end();
+
 
     } catch (error) {
         console.error('LLM/Chat error:', error);
