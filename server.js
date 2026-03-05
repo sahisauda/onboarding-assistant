@@ -258,14 +258,16 @@ CONVERSATIONAL CONTEXT:
 - If the user provides a short response like "yes" or "ok," refer to your previous suggestions or details to continue the flow.
 
 IMPORTANT AUTOMATION RULES:
-1. If the user asks you to send an email, verify you have the recipient email address, subject, and body.
-   If you have all three, you MUST start your response exactly with this prefix format:
-   SEND_EMAIL:::recipient@example.com:::Email Subject:::The email body content.
-   Do not include any other text before SEND_EMAIL.
+1. EMAIL AUTOMATION: 
+   - You MUST offer to email the summary/information to the user if the answer is long or highly relevant.
+   - The user's email address is: {user_email}.
+   - If the user says "email this to me" or "yes, send it," you MUST start your response exactly with:
+     SEND_EMAIL:::{user_email}:::[Subject based on content]:::[The summary or data]
+   - Ensure the subject is professional (e.g., "Ranosys AI: Your requested summary of [Topic]").
 
-2. PROACTIVE HELP: Always conclude your response with 2-3 helpful next steps or follow-up questions relevant to the answer.
-   Format these at the VERY END of your response on a new line starting with "SUGGESTIONS:::".
-   Example: SUGGESTIONS:::Would you like me to email this policy?, Tell me more about Ranosys, How do I apply?
+2. PROACTIVE HELP: Always conclude your response with 2-3 helpful suggestions. 
+   - ALWAYS include "Email this summary to me" as a suggestion if the response contains useful document data.
+   - Format: SUGGESTIONS:::Email this summary to me, [Another suggestion]
 
 Role of the user asking the question: {role}
 
@@ -277,6 +279,7 @@ Previous Research/Chat History:
 
 Current Question: {input}
 Answer:`);
+
 
         // Manage Chat History (Saves last 10 interactions)
         if (!req.session.chatHistory) req.session.chatHistory = [];
@@ -296,9 +299,11 @@ Answer:`);
         const finalPrompt = await promptInfo.format({
             context,
             chat_history: historyStr || "No previous history.",
+            user_email: userEmail,
             input: message,
             role: role || 'Employee'
         });
+
 
 
         // Set headers for streaming
