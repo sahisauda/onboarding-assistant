@@ -404,12 +404,12 @@ Answer:`);
         console.error('LLM/Chat error:', error);
         
         let errorMsg = "Context building failed. This usually happens on large folders. Please retry.";
-        if (error.message && error.message.includes('429')) {
-            errorMsg = "API Rate Limit Exceeded: The system has run out of its daily AI token limit. Please try again later or upgrade your plan.";
+        if (error.message && (error.message.includes('429') || error.message.includes('rate_limit'))) {
+            errorMsg = "API Rate Limit Exceeded: The system has run out of its daily AI token limit. Please wait a few minutes or upgrade your plan.";
         }
 
-        res.status(500).write(`data: ${JSON.stringify({ error: errorMsg })}\n\n`);
-        res.end();
+        // Return a standard JSON 500 error, so app.js can parse errData.error and display it properly.
+        res.status(500).json({ error: errorMsg });
     }
 });
 
