@@ -404,12 +404,18 @@ Answer:`);
         console.error('LLM/Chat error:', error);
         
         let errorMsg = "Context building failed. This usually happens on large folders. Please retry.";
-        if (error.message && (error.message.includes('429') || error.message.includes('rate_limit'))) {
-            errorMsg = "API Rate Limit Exceeded: The system has run out of its daily AI token limit. Please wait a few minutes or upgrade your plan.";
+        if (error.message) {
+            if (error.message.includes('429') || error.message.includes('rate_limit')) {
+                errorMsg = "API Rate Limit Exceeded: The system has run out of its daily AI token limit. Please wait a few minutes or upgrade your plan.";
+            } else if (error.message.includes('401') || error.message.includes('unauthorized')) {
+                errorMsg = "API Key Error: The Groq API Key provided is invalid or unauthorized. Please check your Render environment variables.";
+            } else {
+                errorMsg = "Server Error: " + error.message;
+            }
         }
 
         // Return a standard JSON 500 error, so app.js can parse errData.error and display it properly.
-        res.status(500).json({ error: errorMsg });
+        res.status(500).json({ error: errorMsg, reply: errorMsg });
     }
 });
 
