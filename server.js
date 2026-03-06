@@ -15,6 +15,7 @@ const { RunnableSequence } = require('@langchain/core/runnables');
 const { getOrBuildVectorStore } = require('./ragBuilder');
 const { sendEmail } = require('./emailService');
 const db = require('./db');
+const { isAllowedDomain } = db;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -93,14 +94,21 @@ app.get('/auth/google/callback', async (req, res) => {
     try {
         const { tokens } = await oauth2Client.getToken(code);
         oauth2Client.setCredentials(tokens);
-        req.session.tokens = tokens;
 
         // Get user profile info
         const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
         const userInfo = await oauth2.userinfo.get();
         const email = userInfo.data.email;
 
-        // Initialize user in our mock DB and check if admin
+        // Block anyone who is NOT a Ranosys employee
+        if (!isAllowedDomain(email)) {
+            console.warn(`Blocked login attempt from unauthorized domain: ${email}`);
+            return res.redirect('/?error=unauthorized_domain');
+        }
+
+        req.session.tokens = tokens;
+
+        // Auto-register / fetch user from DB (assigns default folder automatically)
         const userData = db.getUser(email);
 
         req.session.user = {
@@ -111,7 +119,6 @@ app.get('/auth/google/callback', async (req, res) => {
             allowedFolders: userData.allowedFolders
         };
 
-        // Redirect back to main page
         res.redirect('/');
     } catch (error) {
         console.error('Error during Google Auth Callback:', error);
@@ -124,7 +131,6 @@ app.post('/api/auth/logout', (req, res) => {
     res.json({ success: true });
 });
 
-// Middleware to check authentication
 function requireAuth(req, res, next) {
     if (!req.session.tokens) {
         return res.status(401).json({ error: "Authentication required" });
@@ -206,7 +212,8 @@ const llm = new ChatOpenAI({
     configuration: {
         baseURL: process.env.OPENAI_BASE_URL // Points to api.groq.com if configured
     },
-    modelName: process.env.GROQ_MODEL_NAME || 'gpt-4o-mini'
+    modelName: process.env.GROQ_MODEL_NAME || 'gpt-4o-mini',
+    maxRetries: 0 // Disable auto-retry to prevent 60-second timeout hangs on Groq rate limits
 });
 
 // RAG/Chat Endpoint
@@ -257,7 +264,8 @@ app.post('/api/chat', requireAuth, async (req, res) => {
             openAIApiKey: process.env.OPENAI_API_KEY,
             temperature: 0,
             modelName: process.env.GROQ_MODEL_NAME || 'gpt-4o-mini',
-            configuration: { baseURL: process.env.OPENAI_BASE_URL }
+            configuration: { baseURL: process.env.OPENAI_BASE_URL },
+            maxRetries: 0 // Fail fast
         });
 
         const cleanQueryResponse = await queryCleaner.invoke(`
@@ -394,7 +402,13 @@ Answer:`);
 
     } catch (error) {
         console.error('LLM/Chat error:', error);
-        res.status(500).write(`data: ${JSON.stringify({ error: "Context building failed. This usually happens on large folders. Please retry." })}\n\n`);
+        
+        let errorMsg = "Context building failed. This usually happens on large folders. Please retry.";
+        if (error.message && error.message.includes('429')) {
+            errorMsg = "API Rate Limit Exceeded: The system has run out of its daily AI token limit. Please try again later or upgrade your plan.";
+        }
+
+        res.status(500).write(`data: ${JSON.stringify({ error: errorMsg })}\n\n`);
         res.end();
     }
 });
