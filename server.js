@@ -55,6 +55,8 @@ function getServiceAccountDriveClient() {
     return google.drive({ version: 'v3', auth });
 }
 
+app.set('trust proxy', 1); // Trust reverse proxy to allow secure cookies
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
@@ -62,9 +64,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(session({
     secret: process.env.SESSION_SECRET || 'fallback_secret',
     resave: false,
-    saveUninitialized: true,
-    cookie: { secure: false } // Set to true if using HTTPS
+    saveUninitialized: false, // Don't save empty sessions
+    cookie: { 
+        secure: process.env.NODE_ENV === 'production' || process.env.PORTAL_URL?.startsWith('https'), // Set to true if using HTTPS
+        sameSite: 'lax',
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
 }));
+
 
 // Mock Database / State
 const upload = multer({ dest: 'uploads/' });
@@ -74,6 +81,7 @@ let onboardingStatus = { steps: [{ id: 1, text: "Set up laptop", completed: fals
 // --- Authentication Routes ---
 
 app.get('/api/auth/status', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     if (req.session.tokens) {
         return res.json({ authenticated: true, user: req.session.user });
     }
@@ -93,10 +101,17 @@ app.get('/auth/google/callback', async (req, res) => {
     const { code } = req.query;
     try {
         const { tokens } = await oauth2Client.getToken(code);
-        oauth2Client.setCredentials(tokens);
+        
+        // Create a separate auth client for fetching user info to avoid global race conditions
+        const localAuthClient = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+            process.env.GOOGLE_REDIRECT_URI
+        );
+        localAuthClient.setCredentials(tokens);
 
         // Get user profile info
-        const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+        const oauth2 = google.oauth2({ version: 'v2', auth: localAuthClient });
         const userInfo = await oauth2.userinfo.get();
         const email = userInfo.data.email;
 
