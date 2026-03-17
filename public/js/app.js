@@ -29,7 +29,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     try {
-        const authRes = await fetch('/api/auth/status');
+        const authRes = await fetch('/api/auth/status?t=' + new Date().getTime(), {
+            cache: 'no-store',
+            headers: {
+                'Pragma': 'no-cache',
+                'Cache-Control': 'no-cache'
+            }
+        });
         const authData = await authRes.json();
 
         if (!authData.authenticated) {

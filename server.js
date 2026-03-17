@@ -55,18 +55,32 @@ function getServiceAccountDriveClient() {
     return google.drive({ version: 'v3', auth });
 }
 
-app.set('trust proxy', 1); // Trust reverse proxy to allow secure cookies
+// Trust reverse proxy to allow secure cookies and correct IP
+app.set('trust proxy', 1);
 
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
+
+// STRICT GLOBAL CACHE CONTROL FOR ALL API AND AUTH ROUTES
+// This prevents reverse proxies (Nginx, Render, Cloudflare) from caching sessions and sharing them across devices.
+app.use((req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/auth/')) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, private');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Surrogate-Control', 'no-store');
+    }
+    next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(session({
     secret: process.env.SESSION_SECRET || 'fallback_secret',
     resave: false,
     saveUninitialized: false, // Don't save empty sessions
+    name: 'ranosys.sid', // Custom cookie name to avoid generic collisions
     cookie: { 
-        secure: process.env.NODE_ENV === 'production' || process.env.PORTAL_URL?.startsWith('https'), // Set to true if using HTTPS
+        secure: 'auto', // Automatically determine secure status based on proxy
         sameSite: 'lax',
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
@@ -365,8 +379,10 @@ Answer:`);
 
         // Set headers for streaming
         res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Cache-Control', 'no-cache, no-transform');
         res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no'); // Prevent Nginx/proxies from buffering SSE
+
 
         let fullText = '';
         const stream = await llm.stream(finalPrompt);
