@@ -288,7 +288,13 @@ app.post('/api/chat', requireAuth, async (req, res) => {
         }
 
         // AI Step 1: Clean/Expand Query (Understanding shortcuts, slangs, Hinglish)
-        // This ensures "vac pol" becomes "Vacation Policy" before we search the Drive.
+        // [TEMPORARILY DISABLED to prevent Free Tier Groq Rate Limit saturation when multiple users chat concurrently.
+        // This cuts the API calls per-message in exactly half.]
+        let searchTerms = message;
+        console.log(`Skipped AI query rewrite to save tokens. Using raw query: "${searchTerms}"`);
+        
+        /* 
+        // Original Query Cleaner Logic:
         const queryCleaner = new ChatOpenAI({
             openAIApiKey: process.env.OPENAI_API_KEY,
             temperature: 0,
@@ -306,8 +312,9 @@ app.post('/api/chat', requireAuth, async (req, res) => {
             
             User Query: "${message}"
         `);
-        const searchTerms = cleanQueryResponse.content.trim();
+        searchTerms = cleanQueryResponse.content.trim();
         console.log(`AI Rewrote query: "${message}" -> "${searchTerms}"`);
+        */
 
         // Get or build the user's vector store from their Drive folder (uses service account)
         const vectorStore = await getOrBuildVectorStore(userEmail, folderId);

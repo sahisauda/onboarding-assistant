@@ -126,15 +126,17 @@ async function getAllFiles(drive, folderId) {  // drive is already a service acc
 
 // Note: authClient parameter removed — Drive access now uses service account internally.
 async function getOrBuildVectorStore(userEmail, folderId) {
-    const cacheKey = `${userEmail}:${folderId}`;
+    const cacheKey = `folder_${folderId}`;
     if (VECTOR_STORES[cacheKey]) {
-        return VECTOR_STORES[cacheKey];
+        return await VECTOR_STORES[cacheKey];
     }
 
-    console.log(`Building vector store for user ${userEmail} and folder ${folderId}...`);
+    console.log(`Building vector store for folder ${folderId} (shared across all users)...`);
     const drive = getServiceAccountDriveClient();
 
-    try {
+    // Use a Promise to prevent concurrent builds from multiple users hitting the endpoint simultaneously
+    VECTOR_STORES[cacheKey] = (async () => {
+        try {
         // 1. Fetch files recursively
         const files = await getAllFiles(drive, folderId);
         console.log(`Retrieved ${files.length} file entries from folder tree [${folderId}]`);
@@ -227,14 +229,19 @@ async function getOrBuildVectorStore(userEmail, folderId) {
         );
         await vectorStore.addDocuments(splitDocs);
 
+        // Store the resolved vectorStore for subsequent fast access, replacing the promise
         VECTOR_STORES[cacheKey] = vectorStore;
-        console.log(`Finished building vector store for ${userEmail} [${folderId}]. Added ${splitDocs.length} chunks.`);
+        console.log(`Finished building vector store for folder [${folderId}]. Added ${splitDocs.length} chunks.`);
         return vectorStore;
 
-    } catch (error) {
-        console.error('Error fetching from Drive:', error);
-        throw error;
-    }
+        } catch (error) {
+            delete VECTOR_STORES[cacheKey]; // clear failed promise so it can retry
+            console.error('Error fetching from Drive/Building Store:', error);
+            throw error;
+        }
+    })();
+
+    return await VECTOR_STORES[cacheKey];
 }
 
 function clearVectorStore(userEmail) {
